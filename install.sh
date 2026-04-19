@@ -258,7 +258,8 @@ echo ""
 
 # Réinstalle les dépendances si package.json a changé
 if git diff --name-only "\$BEFORE" "\$AFTER" | grep -q "package.json"; then
-  info "package.json modifié, réinstallation des dépendances..."
+  info "package.json modifié — nettoyage complet des node_modules..."
+  rm -rf node_modules
   npm install
 else
   info "package.json inchangé, pas de réinstallation"
