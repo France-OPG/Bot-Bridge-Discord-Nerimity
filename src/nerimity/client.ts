@@ -9,10 +9,7 @@ import { NerChannel } from './api';
 //  github.com/Nerimity/nerimity-server/blob/main/src/common/
 // ─────────────────────────────────────────────────────────────
 
-// Client → Serveur (on envoie ces events)
-const EV_AUTHENTICATE = 'user:authenticate';
-
-// Serveur → Client (on reçoit ces events)
+const EV_AUTHENTICATE         = 'user:authenticate';
 const EV_AUTHENTICATED        = 'user:authenticated';
 const EV_AUTHENTICATE_ERROR   = 'user:authenticate_error';
 const EV_MESSAGE_CREATED      = 'message:created';
@@ -53,8 +50,6 @@ export interface NerChannelDeleted {
   serverId: string;
 }
 
-// Payload du event user:authenticated
-// Contient toutes les données : serveurs, channels, présence…
 interface NerAuthenticatedPayload {
   servers?: Array<{
     id: string;
@@ -76,8 +71,6 @@ export class NerimityClient extends EventEmitter {
   connect(): void {
     logger.info('Connexion au WebSocket Nerimity...');
 
-    // Connexion SANS token dans le handshake — Nerimity utilise
-    // un event dédié "user:authenticate" après connexion
     this.socket = io(config.nerimity.socketUrl, {
       transports: ['websocket'],
       reconnection: true,
@@ -85,39 +78,35 @@ export class NerimityClient extends EventEmitter {
       reconnectionAttempts: Infinity,
     });
 
-    // ── Connexion établie → on s'authentifie ──────────────────
     this.socket.on('connect', () => {
       logger.info('✅ Nerimity WebSocket connecté, envoi du token...');
-      // Nerimity attend le token via cet event dans les 30s
-      // sinon il déconnecte ("Authentication timed out")
+      // Nerimity attend un objet { token: string }
       this.socket.emit(EV_AUTHENTICATE, { token: config.nerimity.token });
     });
 
-    // ── Authentification réussie → on reçoit toutes les données ─
     this.socket.on(EV_AUTHENTICATED, (data: NerAuthenticatedPayload) => {
       logger.info('✅ Nerimity authentifié (user:authenticated reçu)');
 
-      // Cherche notre serveur dans la liste et cache ses channels
-      const server = data?.servers?.find(
-        s => s.id === config.nerimity.serverId
-      );
+      // Log tous les serveurs reçus pour aider à trouver le bon NERIMITY_SERVER_ID
+      const serverList = data?.servers?.map(s => ({ id: s.id, name: s.name })) ?? [];
+      logger.info(`Nerimity: ${serverList.length} serveur(s) reçu(s) : ${JSON.stringify(serverList)}`);
+
+      const server = data?.servers?.find(s => s.id === config.nerimity.serverId);
       if (server?.channels && server.channels.length > 0) {
         this._cachedChannels = server.channels;
-        logger.info(`Nerimity: ${this._cachedChannels.length} channels chargés`);
+        logger.info(`Nerimity: ${this._cachedChannels.length} channels chargés pour le serveur "${server.name}"`);
       } else {
-        logger.warn('Nerimity: serveur non trouvé ou pas de channels dans le payload authenticated');
-        logger.debug('IDs serveurs reçus:', data?.servers?.map(s => s.id));
+        logger.warn(`Nerimity: serveur ID "${config.nerimity.serverId}" non trouvé parmi les serveurs reçus`);
+        logger.warn('→ Vérifie NERIMITY_SERVER_ID dans ton .env (utilise un des IDs ci-dessus)');
       }
 
       this.emit('ready');
     });
 
-    // ── Erreur d'authentification ─────────────────────────────
     this.socket.on(EV_AUTHENTICATE_ERROR, (err: unknown) => {
       logger.error('❌ Nerimity: erreur authentification', { err });
     });
 
-    // ── Déconnexion ───────────────────────────────────────────
     this.socket.on('disconnect', (reason: string) => {
       logger.warn(`⚠️  Nerimity WebSocket déconnecté : ${reason}`);
       this.emit('disconnect');
@@ -127,7 +116,6 @@ export class NerimityClient extends EventEmitter {
       logger.error('Erreur connexion Nerimity', { message: err.message });
     });
 
-    // ── Messages texte ────────────────────────────────────────
     this.socket.on(EV_MESSAGE_CREATED, (data: NerSocketMessage) => {
       logger.debug('Nerimity message:created', {
         channelId: data.channelId,
@@ -136,7 +124,6 @@ export class NerimityClient extends EventEmitter {
       this.emit('message', data);
     });
 
-    // ── Gestion des channels (temps réel) ─────────────────────
     this.socket.on(EV_SERVER_CHANNEL_CREATED, (data: NerChannelCreated) => {
       logger.info(`Nerimity: channel créé — ${data.name}`);
       this.emit('channelCreated', data);
@@ -153,7 +140,6 @@ export class NerimityClient extends EventEmitter {
     });
   }
 
-  /** Channels du serveur, disponibles après authentification */
   getCachedChannels(): NerChannel[] {
     return this._cachedChannels;
   }
