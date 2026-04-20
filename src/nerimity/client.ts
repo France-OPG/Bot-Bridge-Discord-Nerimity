@@ -91,7 +91,7 @@ export class NerimityClient extends EventEmitter {
       const serverList = data?.servers?.map(s => ({ id: s.id, name: s.name })) ?? [];
       logger.info(`Nerimity: ${serverList.length} serveur(s) reçu(s) : ${JSON.stringify(serverList)}`);
 
-      const server = data?.servers?.find(s => s.id === config.nerimity.serverId);
+      const server = data?.servers?.find(s => String(s.id) === String(config.nerimity.serverId));
       if (server?.channels && server.channels.length > 0) {
         this._cachedChannels = server.channels;
         logger.info(`Nerimity: ${this._cachedChannels.length} channels chargés pour le serveur "${server.name}"`);
